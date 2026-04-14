@@ -237,9 +237,7 @@ begin
         wait for 10 ns;
         check("SLT equal (expect 0)", result, x"00000000");
 
-        report "==============================" severity note;
         report "All tests done." severity note;
-        report "==============================" severity note;
 
         wait; -- stop simulation
     end process;
