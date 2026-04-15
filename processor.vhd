@@ -1,28 +1,20 @@
--- ============================================================
--- processor.vhd
--- ECSE 425 - Pipelined Processor
---
--- Top-level five-stage pipelined RISC-V RV32I+M processor.
 -- Stages: IF → ID → EX → MEM → WB
 --
--- Pipeline registers between stages:
---   IF/ID  : holds fetched instruction and NPC (PC+4)
---   ID/EX  : holds decoded operands, immediate, control signals
---   EX/MEM : holds ALU result, store data, control signals
---   MEM/WB : holds ALU result or load data, control signals
+-- the Pipelined registers between stages:
+--   IF/ID:fetched instruction and NPC (PC+4)
+--   ID/EX:decoded operands, immediate, control signals
+--   EX/MEM:ALU result, store data, control signals
+--   MEM/WB:holds ALU result or load data, control signals
 --
--- Hazard detection stalls the pipeline when a required
--- operand is not yet available (RAW hazard).  A bubble
--- (NOP = addi x0,x0,0) is inserted into EX.
+-- Hazard detection stalls pipeline when a required operand is not available (RAW hazard)
+-- A bubble (NOP = addi x0,x0,0 -> so it doenst do anyting) put in EX stage
 --
--- Branch resolution happens in EX.  A taken branch causes a
--- 3-cycle penalty: the three instructions fetched after the
--- branch are flushed (replaced with NOPs).
+-- Branch resolution in EX
+-- taken branch causes 3-cycle penalty: 3 instructions fetched after branch are flushed (replaced with NOPs)
 --
 -- INPUTS:
---   clk   : 1 GHz system clock
+--   clk   : the clock (synched)
 --   reset : active-high synchronous reset
--- ============================================================
 
 library ieee;
 use ieee.std_logic_1164.all;
@@ -37,10 +29,7 @@ end entity processor;
 
 architecture behavioral of processor is
 
-    -- =========================================================
     -- COMPONENT DECLARATIONS
-    -- =========================================================
-
     component alu is
         port (
             op_a   : in  std_logic_vector(31 downto 0);
@@ -109,33 +98,20 @@ architecture behavioral of processor is
         );
     end component;
 
-    -- =========================================================
-    -- CONSTANTS
-    -- =========================================================
-
-    -- NOP = addi x0, x0, 0  (opcode=0010011, funct3=000, rd=0, rs1=0, imm=0)
+    -- NOP = addi x0, x0, 0 -> (opcode=0010011, funct3=000, rd=0, rs1=0, imm=0) -> this is its corresponding instruciotn
     constant NOP : std_logic_vector(31 downto 0) := x"00000013";
 
-    -- =========================================================
     -- IF STAGE SIGNALS
-    -- =========================================================
-
     signal pc          : std_logic_vector(31 downto 0) := (others => '0');
     signal pc_plus4    : std_logic_vector(31 downto 0);
     signal next_pc     : std_logic_vector(31 downto 0);
     signal instr_if    : std_logic_vector(31 downto 0); -- raw output of instruction memory
 
-    -- =========================================================
     -- IF/ID PIPELINE REGISTER
-    -- =========================================================
-
     signal ifid_ir  : std_logic_vector(31 downto 0) := (others => '0'); -- instruction
     signal ifid_npc : std_logic_vector(31 downto 0) := (others => '0'); -- PC+4
 
-    -- =========================================================
     -- ID STAGE SIGNALS
-    -- =========================================================
-
     -- Control signals decoded from ifid_ir
     signal cu_alu_op     : std_logic_vector(3 downto 0);
     signal cu_alu_src    : std_logic;
@@ -162,10 +138,7 @@ architecture behavioral of processor is
     alias id_rs2 : std_logic_vector(4 downto 0) is ifid_ir(24 downto 20);
     alias id_rd  : std_logic_vector(4 downto 0) is ifid_ir(11 downto  7);
 
-    -- =========================================================
     -- ID/EX PIPELINE REGISTER
-    -- =========================================================
-
     signal idex_npc        : std_logic_vector(31 downto 0) := (others => '0');
     signal idex_ir         : std_logic_vector(31 downto 0) := (others => '0');
     signal idex_a          : std_logic_vector(31 downto 0) := (others => '0'); -- rs1 value
@@ -185,10 +158,7 @@ architecture behavioral of processor is
     signal idex_mem_size   : std_logic_vector(1 downto 0) := (others => '0');
     signal idex_mem_signed : std_logic := '1';
 
-    -- =========================================================
     -- EX STAGE SIGNALS
-    -- =========================================================
-
     -- ALU inputs (after muxes)
     signal alu_op_a   : std_logic_vector(31 downto 0);
     signal alu_op_b   : std_logic_vector(31 downto 0);
@@ -206,10 +176,8 @@ architecture behavioral of processor is
     alias ex_rs2 : std_logic_vector(4 downto 0) is idex_ir(24 downto 20);
     alias ex_f3  : std_logic_vector(2 downto 0) is idex_ir(14 downto 12); -- funct3 for branch type
 
-    -- =========================================================
+     
     -- EX/MEM PIPELINE REGISTER
-    -- =========================================================
-
     signal exmem_ir         : std_logic_vector(31 downto 0) := (others => '0');
     signal exmem_alu_out    : std_logic_vector(31 downto 0) := (others => '0');
     signal exmem_b          : std_logic_vector(31 downto 0) := (others => '0'); -- store data
@@ -226,19 +194,14 @@ architecture behavioral of processor is
     signal exmem_mem_signed : std_logic := '1';
     signal exmem_npc        : std_logic_vector(31 downto 0) := (others => '0'); -- for jal/jalr writeback
 
-    -- =========================================================
     -- MEM STAGE SIGNALS
-    -- =========================================================
-
     signal mem_read_data : std_logic_vector(31 downto 0); -- data memory output
 
     -- Register address in MEM (from EX/MEM.IR)
     alias mem_rd : std_logic_vector(4 downto 0) is exmem_ir(11 downto 7);
 
-    -- =========================================================
+     
     -- MEM/WB PIPELINE REGISTER
-    -- =========================================================
-
     signal memwb_ir         : std_logic_vector(31 downto 0) := (others => '0');
     signal memwb_alu_out    : std_logic_vector(31 downto 0) := (others => '0');
     signal memwb_lmd        : std_logic_vector(31 downto 0) := (others => '0'); -- load memory data
@@ -248,58 +211,43 @@ architecture behavioral of processor is
     signal memwb_mem_to_reg : std_logic := '0';
     signal memwb_jump       : std_logic := '0';
 
-    -- =========================================================
     -- WB STAGE SIGNALS
-    -- =========================================================
-
     signal wb_data    : std_logic_vector(31 downto 0); -- final writeback value
     signal wb_rd_addr : std_logic_vector(4 downto 0);  -- destination register
 
-    -- =========================================================
+     
     -- HAZARD DETECTION SIGNALS
-    -- =========================================================
-
     signal stall       : std_logic; -- '1' = stall IF and ID, insert bubble into EX
     signal flush_ex    : std_logic; -- '1' = flush ID/EX (insert NOP into EX)
     signal flush_ifid  : std_logic; -- '1' = flush IF/ID (branch taken penalty)
 
-    -- =========================================================
+     
     -- PC CONTROL
-    -- =========================================================
 
     -- Branch taken = branch instruction in MEM stage with cond='1'
     signal branch_taken : std_logic;
 
 begin
 
-    -- =========================================================
+     
     -- PC+4 ADDER
-    -- =========================================================
-
     pc_plus4 <= std_logic_vector(unsigned(pc) + 4);
 
-    -- =========================================================
-    -- BRANCH TAKEN DETECTION
-    -- (Branch resolves in EX; takes effect updating PC in MEM)
-    -- =========================================================
-
+     
+    -- BRANCH TAKEN DETECTION -> it resolves in EX, and updates PC in mem stage  
     branch_taken <= exmem_branch and exmem_cond;
 
-    -- =========================================================
+     
     -- NEXT PC MUX
-    -- Priority: branch/jump overrides normal PC+4.
-    -- Jump: target is always taken (jal/jalr).
-    -- Branch: target taken only when cond='1'.
-    -- =========================================================
-
+    -- Priority: branch/jump overrides normal PC+4
+    -- Jump: target is always taken (jal/jalr)
+    -- Branch: target taken only when cond='1'
     next_pc <= exmem_branch_tgt when (branch_taken = '1' or exmem_jump = '1')
                else pc_plus4;
 
-    -- =========================================================
     -- PC REGISTER
-    -- Stalls hold PC (and IF/ID) when hazard detected.
-    -- =========================================================
-
+    -- Stalls hold PC (and IF/ID) when hazard detected
+    -- process cuz it acutally takes time and is synched
     pc_reg : process(clk)
     begin
         if rising_edge(clk) then
@@ -314,10 +262,8 @@ begin
         end if;
     end process pc_reg;
 
-    -- =========================================================
+     
     -- INSTRUCTION MEMORY
-    -- =========================================================
-
     imem : instruction_mem
         port map (
             clk             => clk,
@@ -325,12 +271,9 @@ begin
             instruction_out => instr_if
         );
 
-    -- =========================================================
     -- IF/ID PIPELINE REGISTER
-    -- Stall: hold current values.
-    -- Flush (branch taken): insert NOP.
-    -- =========================================================
-
+    -- if Stall: hold current values
+    -- if Flush (branch taken): we insert NOPs
     ifid_reg : process(clk)
     begin
         if rising_edge(clk) then
@@ -345,19 +288,14 @@ begin
         end if;
     end process ifid_reg;
 
-    -- =========================================================
     -- FLUSH SIGNALS
-    -- flush_ifid: squash the instruction in IF/ID on branch taken.
-    -- flush_ex:   squash ID/EX on stall or branch (insert bubble).
-    -- =========================================================
-
+    --if flush_ifid: squash the instruction in IF/ID on branch taken
+    -- if flush_ex:   squash ID/EX on stall or branch (insert bubble)
     flush_ifid <= branch_taken or exmem_jump;
     flush_ex   <= stall or branch_taken or exmem_jump;
 
-    -- =========================================================
-    -- CONTROL UNIT (ID stage)
-    -- =========================================================
 
+    -- CONTROL UNIT (ID stage)
     cu : control_unit
         port map (
             instruction => ifid_ir,
@@ -375,20 +313,13 @@ begin
             mem_signed  => cu_mem_signed
         );
 
-    -- =========================================================
     -- IMMEDIATE GENERATOR (ID stage)
-    -- =========================================================
-
     ig : imm_gen
         port map (
             instruction => ifid_ir,
             imm_out     => imm_id
         );
-
-    -- =========================================================
     -- REGISTER FILE (ID stage reads, WB stage writes)
-    -- =========================================================
-
     rf : register_file
         port map (
             clk       => clk,
@@ -401,22 +332,9 @@ begin
             reg_write => memwb_reg_write
         );
 
-    -- =========================================================
     -- HAZARD DETECTION UNIT
-    --
-    -- Stall when the instruction in EX is a load (mem_read='1')
-    -- AND its destination register matches a source register of
-    -- the instruction currently in ID.
-    --
-    -- This covers the load-use hazard.  All other RAW hazards
-    -- (ALU result not yet written back) also require stalls
-    -- because we have no forwarding.
-    --
-    -- Stall condition for any RAW hazard (no forwarding):
-    --   The instruction in EX is writing a register (reg_write='1')
-    --   AND that register is a source of the instruction in ID.
-    -- =========================================================
-
+    -- Note: stalls when instructoin in EX is load + desitination register matches src reg of instruction in ID -> load-use hazard
+    -- Stall for RAW hazard (no forwarding) when instruction in EX is writing a reg + reg is a source reg of instruction in ID
     hazard : process(idex_reg_write, idex_mem_read,
                      ex_rd, id_rs1, id_rs2,
                      exmem_reg_write, mem_rd,
@@ -426,25 +344,19 @@ begin
         variable id_uses_ex_rd  : boolean;
         variable id_uses_mem_rd : boolean;
     begin
-        -- Does the instruction in EX write a non-zero register?
+        -- insturciton in EX write a non zero register
         ex_writes_rd  := (idex_reg_write = '1') and (ex_rd /= "00000");
 
-        -- Does the instruction in MEM write a non-zero register?
+        -- instruciotn in MEM write non zero reg
         mem_writes_rd := (exmem_reg_write = '1') and (mem_rd /= "00000");
 
-        -- Does the instruction in ID read rs1 or rs2 from EX's rd?
-        id_uses_ex_rd := ex_writes_rd and
-                         ((id_rs1 = ex_rd) or (id_rs2 = ex_rd));
+        -- instrciont in ID read rs1 or rs2 from EX's dest register
+        id_uses_ex_rd := ex_writes_rd and ((id_rs1 = ex_rd) or (id_rs2 = ex_rd));
 
-        -- Does the instruction in ID read rs1 or rs2 from MEM's rd?
-        -- (needed because WB writes at end of cycle, ID reads combinatorially)
-        id_uses_mem_rd := mem_writes_rd and
-                          ((id_rs1 = mem_rd) or (id_rs2 = mem_rd));
+        -- instruoion in ID read rs1 or rs2 from MEM's dest register
+        id_uses_mem_rd := mem_writes_rd and ((id_rs1 = mem_rd) or (id_rs2 = mem_rd));
 
-        -- Stall if there is any unresolved RAW dependency.
-        -- For stores and branches we only stall on rs1/rs2 that are
-        -- actually used — but since we have no forwarding, we stall
-        -- conservatively on any match.
+        -- Stall if there is any unresolved RAW issues
         if id_uses_ex_rd or id_uses_mem_rd then
             stall <= '1';
         else
@@ -452,16 +364,14 @@ begin
         end if;
     end process hazard;
 
-    -- =========================================================
+     
     -- ID/EX PIPELINE REGISTER
-    -- Flush (stall or branch): insert NOP control signals.
-    -- =========================================================
-
+    -- Flush (stall or branch): insert NOP ctrl signals
     idex_reg : process(clk)
     begin
         if rising_edge(clk) then
             if reset = '1' or flush_ex = '1' then
-                -- Insert bubble: NOP instruction, all control signals deasserted
+                -- Insert NOP bubble (rest all 0)
                 idex_ir         <= NOP;
                 idex_npc        <= (others => '0');
                 idex_a          <= (others => '0');
@@ -501,20 +411,15 @@ begin
         end if;
     end process idex_reg;
 
-    -- =========================================================
+     
     -- EX STAGE — ALU INPUT MUXES
-    --
     -- op_a mux: '0' = rs1 value, '1' = NPC (for auipc/jal)
     -- op_b mux: '0' = rs2 value, '1' = immediate
-    -- =========================================================
-
     alu_op_a <= idex_npc when idex_pc_src = '1' else idex_a;
     alu_op_b <= idex_imm when idex_alu_src = '1' else idex_b;
 
-    -- =========================================================
+     
     -- ALU INSTANTIATION
-    -- =========================================================
-
     alu_inst : alu
         port map (
             op_a   => alu_op_a,
@@ -523,14 +428,10 @@ begin
             result => alu_result
         );
 
-    -- =========================================================
+     
     -- BRANCH COMPARATOR
-    --
-    -- Compares idex_a (rs1) and idex_b (rs2) based on funct3
-    -- to determine whether the branch should be taken.
+    -- Compares rs1 and rs2 based on funct3 to check if branch should be taken or not
     -- beq=000, bne=001, blt=100, bge=101, bltu=110, bgeu=111
-    -- =========================================================
-
     branch_compare : process(idex_a, idex_b, ex_f3, idex_branch)
         variable a_s : signed(31 downto 0);
         variable b_s : signed(31 downto 0);
@@ -557,30 +458,18 @@ begin
         end if;
     end process branch_compare;
 
-    -- =========================================================
+     
     -- BRANCH / JUMP TARGET ADDRESS
-    --
-    -- For branches and jal: target = NPC + (imm << 1)
-    --   The immediate from imm_gen already has bit 0 = '0'
-    --   (it's a byte offset), so we just add NPC + imm.
-    --   NPC here is PC+4 stored in ID/EX.NPC.
-    --   But per H&P Fig C.20 the branch target is:
-    --   NPC + (Imm << 1) — however our imm_gen already does
-    --   the << 1 for B-type (bit 0 is forced '0', so the
-    --   immediate IS already the byte offset).  So: NPC + imm.
-    --
+    -- for branches and jal: target = NPC + (imm << 1)
+    -- since imm from imm_gen.vhd already deals iwth the bit shift (and sign extension), we can just add it to NPC
+    -- note: NPC = PC+4 and its stored in ID/EX.NPC
+
     -- For jalr: target = (rs1 + imm) & 0xFFFFFFFE (clear bit 0)
-    --   This is just alu_result with bit 0 cleared.
-    -- =========================================================
+    --  ----> This is just alu_result with bit 0 set to 0
+    branch_target <= std_logic_vector(unsigned(idex_npc) + unsigned(idex_imm)) when idex_jump_reg = '0' else alu_result(31 downto 1) & '0'; -- jalr: clear bit 0
 
-    branch_target <= std_logic_vector(unsigned(idex_npc) + unsigned(idex_imm))
-                     when idex_jump_reg = '0'
-                     else alu_result(31 downto 1) & '0'; -- jalr: clear bit 0
-
-    -- =========================================================
+     
     -- EX/MEM PIPELINE REGISTER
-    -- =========================================================
-
     exmem_reg : process(clk)
     begin
         if rising_edge(clk) then
@@ -618,10 +507,8 @@ begin
         end if;
     end process exmem_reg;
 
-    -- =========================================================
+     
     -- DATA MEMORY (MEM stage)
-    -- =========================================================
-
     dmem : data_mem
         port map (
             clk        => clk,
@@ -634,10 +521,8 @@ begin
             read_data  => mem_read_data
         );
 
-    -- =========================================================
+     
     -- MEM/WB PIPELINE REGISTER
-    -- =========================================================
-
     memwb_reg : process(clk)
     begin
         if rising_edge(clk) then
@@ -661,20 +546,17 @@ begin
         end if;
     end process memwb_reg;
 
-    -- =========================================================
+     
     -- WB STAGE — WRITEBACK MUX
-    --
-    -- Three sources for what gets written to rd:
-    --   jump=1       : NPC (PC+4) — return address for jal/jalr
-    --   mem_to_reg=1 : load data from memory
-    --   default      : ALU result
-    -- =========================================================
-
+    --3 sources for what gets written to rd:
+    --  1.  jump=1       : NPC (PC+4) — return address for jal/jalr
+    --   2. mem_to_reg=1 : load data from memory
+    --  3. default      : ALU result
     wb_data <= memwb_npc     when memwb_jump = '1'       else
                memwb_lmd     when memwb_mem_to_reg = '1' else
                memwb_alu_out;
 
-    -- Destination register address from MEM/WB.IR
+    -- dest reg address from MEM/WB.IR
     wb_rd_addr <= memwb_ir(11 downto 7);
 
 end architecture behavioral;
