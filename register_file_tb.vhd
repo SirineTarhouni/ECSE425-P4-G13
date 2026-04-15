@@ -18,10 +18,9 @@ architecture behavioral of register_file_tb is
     signal rd_data   : std_logic_vector(31 downto 0) := (others => '0');
     signal reg_write : std_logic := '0';
 
-    -- Clk period for the unit test (10 ns = 100 MHz)
     constant CLK_PERIOD : time := 10 ns;
 
-    --helper: check a 32-bit read value
+    --helper function that gives u passing or failing report
     procedure check(
         test_name : in string;
         got       : in std_logic_vector(31 downto 0);
@@ -58,7 +57,7 @@ begin
     begin
 
         -- POWER-ON STATE
-        report "--- Power-on: all registers should be zero ---" severity note;
+        report "--- Power-on: all registers should be initialized at zero ---" severity note;
 
         rs1_addr <= "00000"; rs2_addr <= "00001";
         wait for 5 ns;
@@ -69,7 +68,7 @@ begin
         wait for 5 ns;
         check("x31 reads zero at startup", rs1_data, x"00000000");
 
-        -- BASIC WRITE THEN READ BACK
+        -- WRITE THEN READ BACK
         -- Write 0xDEADBEEF to x5, then read x5 back.
         report "--- Basic write then read back ---" severity note;
 
@@ -184,4 +183,3 @@ begin
     end process;
 
 end architecture behavioral;
-
