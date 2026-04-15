@@ -171,7 +171,7 @@ begin
 
         -- SLTU
         -- 0xFFFFFFFF < 0x1 unsigned = 0  (0xFFFFFFFF is a huge positive number)
-        -- This is the OPPOSITE of signed comparison where -1 < 1
+        -- its the OPPOSITE of signed comparison where -1 < 1
         op_a   <= x"FFFFFFFF";
         op_b   <= std_logic_vector(to_signed(1, 32));
         alu_op <= ALU_SLTU;
