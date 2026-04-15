@@ -1,34 +1,8 @@
--- ============================================================
--- mem_tb.vhd
--- ECSE 425 - Pipelined Processor
---
--- Combined testbench for instruction_mem.vhd and data_mem.vhd.
---
--- INSTRUCTION MEMORY tests:
---   - Loads a small synthetic program from "program.txt"
---     (written by this testbench before simulation starts).
---   - Verifies that each word is read back correctly after
---     one clock cycle (synchronous read latency).
---   - Verifies that an out-of-range address returns 0x00000000
---     rather than causing a simulation error.
---
--- DATA MEMORY tests:
---   - Initialisation: all locations should read as zero.
---   - Word (sw/lw):      write and read back a full 32-bit word.
---   - Halfword signed (sh/lh):   write half, read back sign-extended.
---   - Halfword unsigned (lhu):   same write, read back zero-extended.
---   - Byte signed (sb/lb):       write byte, read back sign-extended.
---   - Byte unsigned (lbu):       same write, read back zero-extended.
---   - Little-endian byte order:  write word, confirm individual bytes.
---   - Boundary: access at the last valid address (32764).
---   - Overwrite: second store to same address replaces first value.
---
--- Clock: 1 GHz (period = 1 ns) matching the processor spec.
--- ============================================================
-
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
+
+
 
 library std;
 use std.textio.all;
@@ -38,21 +12,13 @@ end entity mem_tb;
 
 architecture behavioral of mem_tb is
 
-    -- --------------------------------------------------------
-    -- Clock
-    -- --------------------------------------------------------
     constant CLK_PERIOD : time := 1 ns;
     signal clk : std_logic := '0';
+--
 
-    -- --------------------------------------------------------
-    -- instruction_mem signals
-    -- --------------------------------------------------------
     signal imem_address         : std_logic_vector(31 downto 0) := (others => '0');
     signal imem_instruction_out : std_logic_vector(31 downto 0);
 
-    -- --------------------------------------------------------
-    -- data_mem signals
-    -- --------------------------------------------------------
     signal dmem_address    : std_logic_vector(31 downto 0) := (others => '0');
     signal dmem_write_data : std_logic_vector(31 downto 0) := (others => '0');
     signal dmem_mem_read   : std_logic := '0';
@@ -61,14 +27,8 @@ architecture behavioral of mem_tb is
     signal dmem_mem_signed : std_logic := '1';
     signal dmem_read_data  : std_logic_vector(31 downto 0);
 
-    -- --------------------------------------------------------
-    -- Test tracking
-    -- --------------------------------------------------------
-    shared variable all_pass : boolean := true;
 
-    -- --------------------------------------------------------
-    -- Components
-    -- --------------------------------------------------------
+    shared variable all_pass : boolean := true;
     component instruction_mem is
         port (
             clk             : in  std_logic;
@@ -89,17 +49,39 @@ architecture behavioral of mem_tb is
             read_data  : out std_logic_vector(31 downto 0)
         );
     end component;
+        
+    function to_hex_string(slv : std_logic_vector) return string is
+        variable result : string(1 to slv'length/4);
+        variable temp   : std_logic_vector(3 downto 0);
+    begin
+        for i in 0 to (slv'length/4 - 1) loop
+            temp := slv(slv'length-1 - i*4 downto slv'length-4 - i*4);
+            case temp is
+                when "0000" => result(i+1) := '0';
+                when "0001" => result(i+1) := '1';
+                when "0010" => result(i+1) := '2';
+                when "0011" => result(i+1) := '3';
+                when "0100" => result(i+1) := '4';
+                when "0101" => result(i+1) := '5';
+                when "0110" => result(i+1) := '6';
+                when "0111" => result(i+1) := '7';
+                when "1000" => result(i+1) := '8';
+                when "1001" => result(i+1) := '9';
+                when "1010" => result(i+1) := 'A';
+                when "1011" => result(i+1) := 'B';
+                when "1100" => result(i+1) := 'C';
+                when "1101" => result(i+1) := 'D';
+                when "1110" => result(i+1) := 'E';
+                when others => result(i+1) := 'F';
+            end case;
+        end loop;
+        return result;
+    end function;
 
 begin
 
-    -- --------------------------------------------------------
-    -- Clock generation
-    -- --------------------------------------------------------
     clk <= not clk after CLK_PERIOD / 2;
-
-    -- --------------------------------------------------------
-    -- DUT instantiations
-    -- --------------------------------------------------------
+---
     imem : instruction_mem
         port map (
             clk             => clk,
@@ -119,9 +101,6 @@ begin
             read_data  => dmem_read_data
         );
 
-    -- --------------------------------------------------------
-    -- Stimulus + checking
-    -- --------------------------------------------------------
     stimulus : process
 
         -- ----------------------------------------------------
@@ -177,8 +156,8 @@ begin
                 report "[PASS] " & test_name severity note;
             else
                 report "[FAIL] " & test_name
-                     & "  expected=0x" & to_hstring(expected)
-                     & "  got=0x"      & to_hstring(got)
+                     & "  expected=0x" & to_hex_string(expected)
+                     & "  got=0x"      & to_hex_string(got)
                      severity error;
                 all_pass := false;
             end if;
