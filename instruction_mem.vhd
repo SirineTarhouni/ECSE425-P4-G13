@@ -96,27 +96,15 @@ architecture behavioral of instruction_mem is
 
 begin
 
-    -- --------------------------------------------------------
-    -- Synchronous read — one cycle latency.
-    --
-    -- address(31 downto 2) selects the word; bits [1:0] are
-    -- the byte offset within the word and are ignored because
-    -- RISC-V guarantees instruction addresses are 4-byte
-    -- aligned (PC increments by 4 and jumps clear the low bit).
-    -- --------------------------------------------------------
-    read_port : process(clk)
-        variable word_addr : integer;
-    begin
-        if rising_edge(clk) then
-            word_addr := to_integer(unsigned(address(11 downto 2)));
-            -- Clamp to valid range to avoid simulation errors on
-            -- out-of-bounds PC values during the branch penalty cycles.
-            if word_addr >= 0 and word_addr < MEM_DEPTH then
-                instruction_out <= mem(word_addr);
-            else
-                instruction_out <= (others => '0');
-            end if;
-        end if;
-    end process read_port;
+    read_port : process(address)
+    variable word_addr : integer;
+begin
+    word_addr := to_integer(unsigned(address(11 downto 2)));
+    if word_addr >= 0 and word_addr < MEM_DEPTH then
+        instruction_out <= mem(word_addr);
+    else
+        instruction_out <= (others => '0');
+    end if;
+end process read_port;
 
 end architecture behavioral;
