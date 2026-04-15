@@ -37,19 +37,22 @@ architecture behavioral of instruction_mem is
     begin
         file_open(prog_file, "program.txt", read_mode);
 
+        --reads line by line
         while not endfile(prog_file) and word_index < MEM_DEPTH loop
             readline(prog_file, file_line);
 
-            -- Skip empty lines that may appear at end of file.
+            --skip empty lines that may appear at end of file.
             if file_line'length = 32 then
                 read(file_line, word, ok);
                 if ok then
+                    -- if a read is successful then store in memory
                     mem(word_index) := word;
                     word_index := word_index + 1;
                 end if;
             end if;
         end loop;
 
+        --close file after reading
         file_close(prog_file);
         return mem;
     end function;
@@ -57,16 +60,20 @@ architecture behavioral of instruction_mem is
     signal mem : mem_array := load_program;
 
 begin
-
+-- Convert byte address to word address
     read_port : process(address)
     variable word_addr : integer;
 begin
+    -- byte address to word index
     word_addr := to_integer(unsigned(address(11 downto 2)));
     if word_addr >= 0 and word_addr < MEM_DEPTH then
         instruction_out <= mem(word_addr);
     else
+        --if address is out of range return 0
         instruction_out <= (others => '0');
     end if;
+
+        
 end process read_port;
 
 end architecture behavioral;
